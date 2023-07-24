@@ -38,8 +38,9 @@ public partial struct AnimatorSystem : ISystem
         EntityCommandBuffer ecb = SystemAPI.GetSingleton < BeginSimulationEntityCommandBufferSystem.Singleton >().
                                             CreateCommandBuffer( state.WorldUnmanaged );
 
-        RefRW < EntitiesAnimationCurveLibrary > curveLibrary =
-            SystemAPI.GetSingletonRW < EntitiesAnimationCurveLibrary >();
+        var hasLib = SystemAPI.TryGetSingletonRW < EntitiesAnimationCurveLibrary >( out var curveLibrary );
+
+        if( !hasLib ) return;
 
         UpdateAnimatorJob job =
             new UpdateAnimatorJob

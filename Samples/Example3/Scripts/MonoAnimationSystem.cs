@@ -1,12 +1,14 @@
 using TAO.VertexAnimation;
 using UnityEngine;
 
+using Animation = TAO.VertexAnimation.Animation;
+
 public class MonoAnimationSystem : MonoBehaviour
 {
 	[SerializeField]
-	private VA_Animation[] animations = null;
+	private Animation[] animations = null;
 
-	private VA_Animation curAnimation = null;
+	private Animation curAnimation = null;
 	private float animationTime;
 
 	private MeshRenderer[] meshRenderers = null;
@@ -48,8 +50,10 @@ public class MonoAnimationSystem : MonoBehaviour
 	// This is something like what the hybrid renderer does with the VA_AnimationDataComponent.
 	private void UpdateMaterials(InterpolationData interpolationData)
 	{
+		// Debug.Log( $"{name}.UpdateMaterials( {interpolationData.animationMapIndex}, {interpolationData.animationTime:N2} )" );
+
 		MaterialPropertyBlock materialPropertyBlock = new MaterialPropertyBlock();
-		materialPropertyBlock.SetVector("_AnimationData", new Vector4(animationTime, curAnimation.Data.animationMapIndex, interpolationData.animationTime, interpolationData.animationMapIndex));
+		materialPropertyBlock.SetVector("_AnimationDataOne", new Vector4(animationTime, curAnimation.Data.animationMapIndex, interpolationData.animationTime, interpolationData.animationMapIndex));
 
 		foreach (var mr in meshRenderers)
 		{
@@ -61,7 +65,7 @@ public class MonoAnimationSystem : MonoBehaviour
 	}
 
 	// This is resembles the VA_AnimatorSystem.
-	private static InterpolationData GetInterpolationData(VA_Animation animation, float animationTime)
+	private static InterpolationData GetInterpolationData(Animation animation, float animationTime)
 	{
 		InterpolationData data = new InterpolationData();
 
