@@ -1,8 +1,7 @@
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 using UnityEditor;
-using UnityEngine.Experimental.Rendering;
-
 namespace TAO.VertexAnimation.Editor
 {
 	[CreateAssetMenu(fileName = "new ModelBaker", menuName = "TAO/VertexAnimation/ModelBaker", order = 400)]
@@ -11,13 +10,19 @@ namespace TAO.VertexAnimation.Editor
 #if UNITY_EDITOR
 		// Input.
 		public GameObject model;
-		public AnimationClip[] animationClips;
+
+		/// <summary> If true each child mesh will be processed separated to its own output file with name of the mesh transform name. </summary>
+		[SerializeField] bool _batchMode;
+		/// <summary> Child meshes inside this collection will not be processed. </summary>
+		[SerializeField] List<string> _ignoredMeshs;
+
+		[InlineEditor] public AnimationClipCollection animationClips;
 		[Range(1, 60)]
-		public int fps = 24;
+		public int fps = 12;
 		public int textureWidth = 512;
 		public bool applyRootMotion = false;
 		public bool includeInactive = false;
-	
+
 		public LODSettings lodSettings = new LODSettings();
 		public bool applyAnimationBounds = true;
 		public bool generateAnimationBook = true;
@@ -27,12 +32,7 @@ namespace TAO.VertexAnimation.Editor
 		public bool useNormalA = true;
 
 		// Output.
-		public GameObject prefab = null;
-		public Texture2DArray positionMap = null;
-		public Material material = null;
-		public Mesh[] meshes = null;
-		public AnimationBook book = null;
-		public List<Animation> animations = new List<Animation>();
+		public List<BakedModel> bakedModels = new List<BakedModel>();
 
 		[System.Serializable]
 		public class LODSettings
@@ -42,40 +42,25 @@ namespace TAO.VertexAnimation.Editor
 			public float[] GetQualitySettings()
 			{
 				float[] q = new float[lodSettings.Length];
-
-				for (int i = 0; i < lodSettings.Length; i++)
-				{
-					q[i] = lodSettings[i].quality;
-				}
-
+				for (int i = 0; i < lodSettings.Length; i++) q[i] = lodSettings[i].quality;
 				return q;
 			}
 
 			public float[] GetTransitionSettings()
 			{
 				float[] t = new float[lodSettings.Length];
-
-				for (int i = 0; i < lodSettings.Length; i++)
-				{
-					t[i] = lodSettings[i].screenRelativeTransitionHeight;
-				}
-
+				for (int i = 0; i < lodSettings.Length; i++) t[i] = lodSettings[i].screenRelativeTransitionHeight;
 				return t;
 			}
 
-			public int LODCount()
-			{
-				return lodSettings.Length;
-			}
+			public int LODCount() => lodSettings.Length;
 		}
 
 		[System.Serializable]
 		public struct LODSetting
 		{
-			[Range(1.0f, 0.0f)]
-			public float quality;
-			[Range(1.0f, 0.0f)]
-			public float screenRelativeTransitionHeight;
+			[Range(1.0f, 0.0f)] public float quality;
+			[Range(1.0f, 0.0f)] public float screenRelativeTransitionHeight;
 
 			public LODSetting(float q, float t)
 			{
@@ -87,216 +72,271 @@ namespace TAO.VertexAnimation.Editor
 		private void OnValidate()
 		{
 			if (materialShader == null)
-			{
 				materialShader = Shader.Find("TAO/Lit");
-			}
 		}
+
+		// ── Helpers ──────────────────────────────────────────────
+
+		private string GetOutputFolder()
+		{
+			string bakerPath = AssetDatabase.GetAssetPath(this);
+			string dir = Path.GetDirectoryName(bakerPath).Replace('\\', '/');
+			return $"{dir}";
+		}
+
+		private void EnsureOutputFolder()
+		{
+			string folder = GetOutputFolder();
+			if (AssetDatabase.IsValidFolder(folder)) return;
+			string parent = Path.GetDirectoryName(folder).Replace('\\', '/');
+			string folderName = Path.GetFileName(folder);
+			AssetDatabase.CreateFolder(parent, folderName);
+		}
+
+		// ── Bake ─────────────────────────────────────────────────
 
 		public void Bake()
 		{
+			Debug.Log($"{name}.VertexAnimationModelBaker.Bake()");
+
+			if (_batchMode)
+			{
+				var smrs = model.GetComponentsInChildren<SkinnedMeshRenderer>(includeInactive);
+				foreach (var smr in smrs)
+				{
+					if (_ignoredMeshs != null && _ignoredMeshs.Contains(smr.name)) continue;
+					BakeSingle($"{name}_MultipleBakes/{smr.name}", smr.name);
+				}
+			}
+			else
+			{
+				BakeSingle($"{name}_SingleBake", null);
+			}
+		}
+
+		private void BakeSingle(string outputName, string onlyMeshName)
+		{
+			Material sourceMaterial = null;
+			if (onlyMeshName != null)
+			{
+				foreach (var smr in model.GetComponentsInChildren<SkinnedMeshRenderer>(includeInactive))
+				{
+					if (smr.name == onlyMeshName) { sourceMaterial = smr.sharedMaterial; break; }
+				}
+			}
+
 			var target = Instantiate(model);
 			target.name = model.name;
 
+			RemoveIgnoredMeshes(target);
+			if (onlyMeshName != null) RemoveAllMeshesExcept(target, onlyMeshName);
+
 			target.ConbineAndConvertGameObject(includeInactive);
-			AnimationBaker.BakedData bakedData = target.Bake(animationClips, applyRootMotion, fps, textureWidth);
-
-			positionMap = Texture2DArrayUtils.CreateTextureArray(bakedData.positionMaps.ToArray(), false, true, TextureWrapMode.Repeat, FilterMode.Point, 1, string.Format("{0}_PositionMap", name), true);
-			meshes = bakedData.mesh.GenerateLOD(lodSettings.LODCount(), lodSettings.GetQualitySettings());
-
+			AnimationBaker.BakedData bakedData = target.Bake(animationClips.Clips, applyRootMotion, fps, textureWidth);
 			DestroyImmediate(target);
 
-			SaveAssets(bakedData);
+			SaveAssets(bakedData, outputName, sourceMaterial);
 		}
 
-		private void SaveAssets(AnimationBaker.BakedData bakedData)
+		private void RemoveIgnoredMeshes(GameObject target)
 		{
-			AssetDatabaseUtils.RemoveChildAssets(this, new Object[2] { book, material });
-
-			Bounds bounds = new Bounds
+			if (_ignoredMeshs == null || _ignoredMeshs.Count == 0) return;
+			foreach (var smr in target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
 			{
-				max = bakedData.maxBounds,
-				min = bakedData.minBounds
-			};
+				if (_ignoredMeshs.Contains(smr.name)) DestroyImmediate(smr);
+			}
+		}
 
-			for (int i = 0; i < meshes.Length; i++)
+		private void RemoveAllMeshesExcept(GameObject target, string keepName)
+		{
+			foreach (var smr in target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
 			{
-				if (applyAnimationBounds)
-				{
-					meshes[i].bounds = bounds;
-				}
+				if (smr.name != keepName) DestroyImmediate(smr);
+			}
+		}
 
-				meshes[i].Finalize();
-				SerializedObject s = new SerializedObject(meshes[i]);
-				s.FindProperty("m_IsReadable").boolValue = true;
-				AssetDatabase.AddObjectToAsset(s.targetObject, this);
+		// ── Save ─────────────────────────────────────────────────
+
+		private void SaveAssets(AnimationBaker.BakedData bakedData, string outputName, Material sourceMaterial = null)
+		{
+			EnsureOutputFolder();
+			string folder = GetOutputFolder();
+			string modelPath = $"{folder}/{outputName}.asset";
+			string modelDir = Path.GetDirectoryName(modelPath).Replace('\\', '/');
+			if (!AssetDatabase.IsValidFolder(modelDir))
+			{
+				string parent = Path.GetDirectoryName(modelDir).Replace('\\', '/');
+				AssetDatabase.CreateFolder(parent, Path.GetFileName(modelDir));
 			}
 
-			AssetDatabase.AddObjectToAsset(positionMap, this);
+			// Load or create the BakedModel asset.
+			var bakedModel = AssetDatabase.LoadAssetAtPath<BakedModel>(modelPath);
+			if (bakedModel == null)
+			{
+				bakedModel = CreateInstance<BakedModel>();
+				AssetDatabase.CreateAsset(bakedModel, modelPath);
+			}
+
+			// Clear old sub-assets.
+			foreach (var a in AssetDatabase.LoadAllAssetsAtPath(modelPath))
+			{
+				if (a != bakedModel) AssetDatabase.RemoveObjectFromAsset(a);
+			}
+
+			// Position map.
+			bakedModel.positionMap = Texture2DArrayUtils.CreateTextureArray(
+				bakedData.positionMaps.ToArray(), false, true,
+				TextureWrapMode.Repeat, FilterMode.Point, 1,
+				$"{outputName}_PositionMap", true);
+			AssetDatabase.AddObjectToAsset(bakedModel.positionMap, bakedModel);
+
+			// Meshes.
+			Bounds bounds = new() { max = bakedData.maxBounds, min = bakedData.minBounds };
+			bakedModel.meshes = bakedData.mesh.GenerateLOD(lodSettings.LODCount(), lodSettings.GetQualitySettings());
+			for (int i = 0; i < bakedModel.meshes.Length; i++)
+			{
+				if (applyAnimationBounds) bakedModel.meshes[i].bounds = bounds;
+				bakedModel.meshes[i].Finalize();
+				var s = new SerializedObject(bakedModel.meshes[i]);
+				s.FindProperty("m_IsReadable").boolValue = true;
+				AssetDatabase.AddObjectToAsset(bakedModel.meshes[i], bakedModel);
+			}
+
 			AssetDatabase.SaveAssets();
 
-			if (generatePrefab)
-			{
-				GeneratePrefab(bakedData);
-			}
+			if (generatePrefab) GeneratePrefab(bakedData, bakedModel, outputName, folder, sourceMaterial);
+			if (generateAnimationBook) GenerateBook(bakedData, bakedModel, outputName);
 
-			if (generateAnimationBook)
-			{
-				GenerateBook(bakedData);
-			}
+			if (!bakedModels.Contains(bakedModel)) bakedModels.Add(bakedModel);
 
+			EditorUtility.SetDirty(bakedModel);
+			EditorUtility.SetDirty(this);
 			AssetDatabase.SaveAssets();
 			AssetDatabase.Refresh();
 		}
 
-		private void GeneratePrefab(AnimationBaker.BakedData bakedData)
+		private void GeneratePrefab(AnimationBaker.BakedData bakedData, BakedModel bakedModel, string outputName, string folder, Material sourceMaterial)
 		{
-			string path = AssetDatabase.GetAssetPath(this);
-			int start = path.LastIndexOf('/');
-			path = path.Remove(start, path.Length - start);
-			path += "/" + name + ".prefab";
-
-			// Get info.
+			string path = $"{folder}/{outputName}.prefab";
 			NamingConventionUtils.PositionMapInfo info = bakedData.GetPositionMap.name.GetTextureInfo();
 
-			//bakedData.mesh.SetTriangles( bakedData.mesh.triangles, 0 );
-			//meshes = new[] { bakedData.mesh };
-			
-			// Generate Material
-			if (!AssetDatabaseUtils.HasChildAsset(this, material))
+			if (bakedModel.material == null)
 			{
-				material = AnimationMaterial.Create(name, materialShader, positionMap, useNormalA, useInterpolation, info.maxFrames);
-				AssetDatabase.AddObjectToAsset(material, this);
+				bakedModel.material = AnimationMaterial.Create(outputName, materialShader, bakedModel.positionMap, useNormalA, useInterpolation, info.maxFrames);
+				AssetDatabase.AddObjectToAsset(bakedModel.material, bakedModel);
 			}
 			else
 			{
-				material.Update(name, materialShader, positionMap, useNormalA, useInterpolation, info.maxFrames);
+				bakedModel.material.Update(outputName, materialShader, bakedModel.positionMap, useNormalA, useInterpolation, info.maxFrames);
 			}
 
-			// Generate Prefab
-			prefab = AnimationPrefab.Create(path, name, meshes, material, lodSettings.GetTransitionSettings());
+			if (sourceMaterial != null)
+			{
+				bakedModel.material.SetTexture( "_BaseMap", sourceMaterial.GetTexture( "_BaseMap" ) );
+				bakedModel.material.SetColor( "_BaseColor", sourceMaterial.GetColor( "_BaseColor" ) );
+				bakedModel.material.SetTexture( "_SpecGlossMap", sourceMaterial.GetTexture( "_SpecGlossMap" ) );
+				bakedModel.material.SetColor( "_SpecColor", sourceMaterial.GetColor( "_SpecColor" ) );
+				if (sourceMaterial.IsKeywordEnabled( "_EMISSION" ))
+				{
+					bakedModel.material.EnableKeyword( "_EMISSION" );
+					bakedModel.material.SetTexture( "_EmissionMap", sourceMaterial.GetTexture( "_EmissionMap" ) );
+					bakedModel.material.SetColor( "_EmissionColor", sourceMaterial.GetColor( "_EmissionColor" ) );
+				}
+			}
+
+			bakedModel.prefab = AnimationPrefab.Create(path, outputName, bakedModel.meshes, bakedModel.material, lodSettings.GetTransitionSettings());
 		}
 
-		private void GenerateBook(AnimationBaker.BakedData bakedData)
+		private void GenerateBook(AnimationBaker.BakedData bakedData, BakedModel bakedModel, string outputName)
 		{
-			// Create book.
-			if (!book)
+			string bookPath = AssetDatabase.GetAssetPath(this).Replace(".asset", "_Book.asset");
+			string bookDir = Path.GetDirectoryName(bookPath).Replace('\\', '/');
+			if (!AssetDatabase.IsValidFolder(bookDir))
+			{
+				string parent = Path.GetDirectoryName(bookDir).Replace('\\', '/');
+				AssetDatabase.CreateFolder(parent, Path.GetFileName(bookDir));
+			}
+
+			var book = AssetDatabase.LoadAssetAtPath<AnimationBook>(bookPath);
+			if (book == null)
 			{
 				book = CreateInstance<AnimationBook>();
+				AssetDatabase.CreateAsset(book, bookPath);
 			}
 
-			book.name = string.Format("{0}_Book", name);
-			book.positionMap = positionMap;
+			// Clear old animation sub-assets.
+			foreach (var a in AssetDatabase.LoadAllAssetsAtPath(bookPath))
+			{
+				if (a != book) AssetDatabase.RemoveObjectFromAsset(a);
+			}
+
+			bakedModel.book = book;
 			book.animations = new List<Animation>();
-			book.TryAddMaterial(material);
 
-			// Save book.
-			if (!AssetDatabaseUtils.HasChildAsset(this, book))
-			{
-				AssetDatabase.AddObjectToAsset(book, this);
-			}
+			List<NamingConventionUtils.PositionMapInfo> info = new();
+			foreach (var t in bakedData.positionMaps) info.Add(t.name.GetTextureInfo());
+			
+			var mat = bakedModel.material;
+			if (mat.HasProperty("_MaxFrames") && info.Count > 0) mat.SetFloat("_MaxFrames", info[0].maxFrames);
+			if (mat.HasProperty("_PositionMap")) mat.SetTexture("_PositionMap", bakedModel.positionMap);
 
-			// Get animation info.
-			List<NamingConventionUtils.PositionMapInfo> info = new List<NamingConventionUtils.PositionMapInfo>();
-			foreach (var t in bakedData.positionMaps)
-			{
-				info.Add(t.name.GetTextureInfo());
-			}
-
-			// Create animations.
 			for (int i = 0; i < info.Count; i++)
 			{
-				string animationName = string.Format("{0}_{1}", name, info[i].name);
-				VA_AnimationData newData = new VA_AnimationData(animationName, info[i].frames, info[i].maxFrames, info[i].fps, i, -1);
+				string animationName = $"{outputName}_{info[i].name}";
+				VA_AnimationData newData = new(animationName, info[i].frames, info[i].maxFrames, info[i].fps, i, -1);
 
-				// Either update existing animation or create a new one.
-				if (TryGetAnimationWithName(animationName, out Animation animation))
-				{
-					animation.SetData(newData);
-				}
-				else
-				{
-					animation = CreateInstance<Animation>();
-					animation.name = animationName;
-					animation.SetData(newData);
-					animations.Add(animation);
-				}
-
+				var animation = CreateInstance<Animation>();
+				animation.name = animationName;
+				AssetDatabase.AddObjectToAsset(animation, book);
+				animation.SetData(newData);
 				book.TryAddAnimation(animation);
 			}
 
-			// Save animation objects.
-			foreach (var a in animations)
-			{
-				AssetDatabaseUtils.TryAddChildAsset(book, a);
-			}
+			EditorUtility.SetDirty(book);
 		}
 
-		private bool TryGetAnimationWithName(string name, out Animation animation)
+		private static bool TryGetAnimationFromBook(AnimationBook book, string animationName, out Animation animation)
 		{
-			foreach (var a in animations)
+			foreach (var a in book.animations)
 			{
-				if (a != null)
-				{
-					if (a.name == name)
-					{
-						animation = a;
-						return true;
-					}
-				}
+				if (a != null && a.name == animationName) { animation = a; return true; }
 			}
-
 			animation = null;
 			return false;
 		}
 
+		// ── Cleanup ───────────────────────────────────────────────
+
 		public void DeleteSavedAssets()
 		{
-			// Remove assets.
-			var assets = AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GetAssetPath(this));
-			foreach (var a in assets)
-			{
-				if (a != this)
-				{
-					AssetDatabase.RemoveObjectFromAsset(a);
-				}
-			}
+			string folder = GetOutputFolder();
+			if (AssetDatabase.IsValidFolder(folder))
+				AssetDatabase.DeleteAsset(folder);
 
-			// Delete prefab.
-			string path = AssetDatabase.GetAssetPath(prefab);
-			AssetDatabase.DeleteAsset(path);
+			bakedModels.Clear();
 
-			// Clear variables.
-			prefab = null;
-			positionMap = null;
-			material = null;
-			meshes = null;
-			book = null;
-			animations = new List<Animation>();
-
+			EditorUtility.SetDirty(this);
 			AssetDatabase.SaveAssets();
 			AssetDatabase.Refresh();
 		}
 
 		public void DeleteUnusedAnimations()
 		{
-			if (book != null)
+			foreach (var bm in bakedModels)
 			{
-				// Remove unused animations.
-				for (int i = 0; i < animations.Count; i++)
+				if (bm == null || bm.book == null) continue;
+
+				var bookPath = AssetDatabase.GetAssetPath(bm.book);
+				var allAnims = AssetDatabase.LoadAllAssetsAtPath(bookPath);
+				foreach (var a in allAnims)
 				{
-					if (!book.animations.Contains(animations[i]))
-					{
-						AssetDatabase.RemoveObjectFromAsset(animations[i]);
-						animations[i] = null;
-					}
+					if (a is Animation anim && !bm.book.animations.Contains(anim))
+						AssetDatabase.RemoveObjectFromAsset(anim);
 				}
-
-				// Remove zero entries.
-				animations.RemoveAll(a => a == null);
-
-				AssetDatabase.SaveAssets();
-				AssetDatabase.Refresh();
 			}
+
+			AssetDatabase.SaveAssets();
+			AssetDatabase.Refresh();
 		}
 #endif
 	}

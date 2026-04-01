@@ -5,7 +5,9 @@
         "TAO.VertexAnimation",
         "Unity.Collections",
         "Unity.Entities",
-        "Unity.Entities.Hybrid"
+        "Unity.Entities.Hybrid",
+        "K10",
+        "K10.Editor"
     ],
     "includePlatforms": [
         "Editor"
