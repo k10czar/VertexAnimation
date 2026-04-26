@@ -57,11 +57,17 @@ public static class SkinnedMeshCombiner
 			}
 			//skinnedMeshRenderer.enabled = false;
 		}
+		
+		Debug.Log( $"Combine( {(target != null ? target.name : "NULL")}, {name} )" );
 
 		List<Matrix4x4> bindposes = new List<Matrix4x4>();
 		for( int i = 0; i < bones.Count; ++i )
 		{
 			Transform bone = bones[i];
+			Debug.Log( $"bone[{i}] = {(bone != null ? bone.name : "NULL")}" );
+			Debug.Log( $"target = {(target != null ? target.name : "NULL")}" );
+			Debug.Log( $"target.transform = {(target.transform != null ? target.transform.name : "NULL")}" );
+			Debug.Log( $"target.transform.worldToLocalMatrix = {target.transform.worldToLocalMatrix}" );
 			bindposes.Add( bone.worldToLocalMatrix * target.transform.worldToLocalMatrix );
 			
 		}
@@ -334,6 +340,7 @@ public static class SkinnedMeshCombiner
 
 		public static void ConbineAndConvertGameObject(this GameObject gameObject, bool includeInactive = false)
 		{
+			Debug.Log( $"MeshCombiner.ConbineAndConvertGameObject( {gameObject?.name ?? "NULL"} )" );
 			// Get Skinned Meshes.
 			List<SkinnedMeshRenderer> skinnedMeshes = new List<SkinnedMeshRenderer>();
 			gameObject.GetComponentsInChildren(includeInactive, skinnedMeshes);

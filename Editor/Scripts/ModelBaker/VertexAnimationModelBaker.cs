@@ -116,6 +116,7 @@ namespace TAO.VertexAnimation.Editor
 
 		private void BakeSingle(string outputName, string onlyMeshName)
 		{
+			
 			Material sourceMaterial = null;
 			if (onlyMeshName != null)
 			{
@@ -183,11 +184,13 @@ namespace TAO.VertexAnimation.Editor
 				if (a != bakedModel) AssetDatabase.RemoveObjectFromAsset(a);
 			}
 
+			var rawName = outputName.Split('/')[^1];
+
 			// Position map.
 			bakedModel.positionMap = Texture2DArrayUtils.CreateTextureArray(
 				bakedData.positionMaps.ToArray(), false, true,
 				TextureWrapMode.Repeat, FilterMode.Point, 1,
-				$"{outputName}_PositionMap", true);
+				$"{rawName}_PositionMap", true);
 			AssetDatabase.AddObjectToAsset(bakedModel.positionMap, bakedModel);
 
 			// Meshes.
@@ -220,14 +223,15 @@ namespace TAO.VertexAnimation.Editor
 			string path = $"{folder}/{outputName}.prefab";
 			NamingConventionUtils.PositionMapInfo info = bakedData.GetPositionMap.name.GetTextureInfo();
 
+			var matName = outputName.Split('/')[^1] + "_Material";
 			if (bakedModel.material == null)
 			{
-				bakedModel.material = AnimationMaterial.Create(outputName, materialShader, bakedModel.positionMap, useNormalA, useInterpolation, info.maxFrames);
+				bakedModel.material = AnimationMaterial.Create(matName, materialShader, bakedModel.positionMap, useNormalA, useInterpolation, info.maxFrames);
 				AssetDatabase.AddObjectToAsset(bakedModel.material, bakedModel);
 			}
 			else
 			{
-				bakedModel.material.Update(outputName, materialShader, bakedModel.positionMap, useNormalA, useInterpolation, info.maxFrames);
+				bakedModel.material.Update(matName, materialShader, bakedModel.positionMap, useNormalA, useInterpolation, info.maxFrames);
 			}
 
 			if (sourceMaterial != null)

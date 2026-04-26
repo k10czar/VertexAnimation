@@ -44,6 +44,12 @@
         },
         {
             "m_Id": "a26112f7a84a474fb5edbe1546f1d72b"
+        },
+        {
+            "m_Id": "4c4eb2d44969485d822ccfa7b1d6cc34"
+        },
+        {
+            "m_Id": "aa41514a3f3a48c49f0dd3f567b7b3a0"
         }
     ],
     "m_Keywords": [
@@ -2437,8 +2443,8 @@
     "m_ObjectId": "28a570460d5d456da389318b319381ee",
     "m_Title": "Lerp",
     "m_Position": {
-        "x": -4548.80029296875,
-        "y": 313.59991455078127
+        "x": -4548.0,
+        "y": 316.0
     }
 }
 
@@ -3209,6 +3215,34 @@
         "w": 0.0
     },
     "m_DefaultValue": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "w": 0.0
+    }
+}
+
+{
+    "m_SGVersion": 1,
+    "m_Type": "UnityEditor.ShaderGraph.Internal.Vector4ShaderProperty",
+    "m_ObjectId": "4c4eb2d44969485d822ccfa7b1d6cc34",
+    "m_Guid": {
+        "m_GuidSerialized": "fcf14bb9-c18a-45b4-9a24-b993443a8346"
+    },
+    "m_Name": "AnimationDataTwo",
+    "m_DefaultRefNameVersion": 1,
+    "m_RefNameGeneratedByDisplayName": "AnimationDataTwo",
+    "m_DefaultReferenceName": "_AnimationDataTwo",
+    "m_OverrideReferenceName": "",
+    "m_GeneratePropertyBlock": true,
+    "m_UseCustomSlotLabel": false,
+    "m_CustomSlotLabel": "",
+    "m_DismissedVersion": 0,
+    "m_Precision": 0,
+    "overrideHLSLDeclaration": true,
+    "hlslDeclarationOverride": 3,
+    "m_Hidden": false,
+    "m_Value": {
         "x": 0.0,
         "y": 0.0,
         "z": 0.0,
@@ -4810,6 +4844,12 @@
         },
         {
             "m_Id": "d8e6dd9d0f5b4f75a95867330e06f4e6"
+        },
+        {
+            "m_Id": "4c4eb2d44969485d822ccfa7b1d6cc34"
+        },
+        {
+            "m_Id": "aa41514a3f3a48c49f0dd3f567b7b3a0"
         }
     ]
 }
@@ -6055,6 +6095,34 @@
         "m_SerializableColors": []
     },
     "m_SerializedDescriptor": "SurfaceDescription.Smoothness"
+}
+
+{
+    "m_SGVersion": 1,
+    "m_Type": "UnityEditor.ShaderGraph.Internal.Vector1ShaderProperty",
+    "m_ObjectId": "aa41514a3f3a48c49f0dd3f567b7b3a0",
+    "m_Guid": {
+        "m_GuidSerialized": "2b414016-34fd-4dd6-b7db-03ece39f7fb7"
+    },
+    "m_Name": "AnimationDataBlend",
+    "m_DefaultRefNameVersion": 1,
+    "m_RefNameGeneratedByDisplayName": "AnimationDataBlend",
+    "m_DefaultReferenceName": "_AnimationDataBlend",
+    "m_OverrideReferenceName": "",
+    "m_GeneratePropertyBlock": true,
+    "m_UseCustomSlotLabel": false,
+    "m_CustomSlotLabel": "",
+    "m_DismissedVersion": 0,
+    "m_Precision": 0,
+    "overrideHLSLDeclaration": true,
+    "hlslDeclarationOverride": 3,
+    "m_Hidden": false,
+    "m_Value": 0.0,
+    "m_FloatType": 0,
+    "m_RangeValues": {
+        "x": 0.0,
+        "y": 1.0
+    }
 }
 
 {
@@ -8086,8 +8154,8 @@
     "m_ObjectId": "e6214d379a71458b86eeb08aceb126e3",
     "m_Title": "R = AnimationTime, G = AnimationIndex, B = AnimationTimeNext, A = AnimationIndexNext",
     "m_Position": {
-        "x": -4807.2001953125,
-        "y": -122.40010070800781
+        "x": -4806.0,
+        "y": -121.0
     }
 }
 

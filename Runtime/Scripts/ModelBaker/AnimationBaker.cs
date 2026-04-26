@@ -65,6 +65,7 @@ namespace TAO.VertexAnimation
 
 		public static BakedData Bake(this GameObject model, AnimationClip[] animationClips, bool applyRootMotion, int fps, int textureWidth)
 		{
+			Debug.Log( $"AnimationBaker.Bake()" );
 			BakedData bakedData = new BakedData()
 			{
 				mesh = null,

@@ -6,19 +6,46 @@ namespace TAO.VertexAnimation
 	{
 		public static Mesh[] GenerateLOD(this Mesh mesh, int lods, float[] quality)
 		{
+			Debug.Log( $"MeshLodGenerator.GenerateLOD( {mesh?.vertexCount.ToString() ?? "NULL" }[{lods}] )" );
+
 			Mesh[] lodMeshes = new Mesh[lods];
-			
-			for (int lm = 0; lm < lodMeshes.Length; lm++)
+			var meshName = mesh.name;
+
+			var tris = mesh.triangles;
+			var verts = mesh.vertices;
+
+			var trisCount = tris.Length;
+			for( int i = 1; i < trisCount; i++ )
 			{
-				lodMeshes[lm] = mesh.Copy();
+				var vId = tris[i];
+				var oId = tris[i-1];
+				Debug.DrawLine( verts[vId], verts[oId], Color.red, 20 );
+			}
+
+			Debug.Log( $"tris[{tris.Length}]: {{ {string.Join( ", ", tris )} }}" );
+			Debug.Log( $"verts[{verts.Length}]: {{ {string.Join( ", ", verts )} }}" );
+
+			var debug = new (Vector3[],int[])[lodMeshes.Length];
+			
+			for( int i = 0; i < lodMeshes.Length; i++ )
+			{
+				var lodMesh = mesh.Copy();
 				// Only simplify when needed.
-				if (quality[lm] < 1.0f)
+
+				var modelQuality = quality[i];
+				if (modelQuality - 1.0f < -float.Epsilon)
 				{
-					lodMeshes[lm] = lodMeshes[lm].Simplify(quality[lm]);
+					lodMesh = lodMesh.Simplify(modelQuality);
 				}
 
-				lodMeshes[lm].name = string.Format("{0}_LOD{1}", lodMeshes[lm].name, lm);
+				Debug.Log( $"MeshLodGenerator.GenerateLOD[{i}]( v:{lodMesh.vertexCount}, t:{lodMesh.triangles.Length} )" );
+
+				lodMesh.name = $"{meshName}_LOD{i}";
+				lodMeshes[i] = lodMesh;
+				debug[i] = ( (Vector3[]) lodMesh.vertices.Clone(), (int[])lodMesh.triangles.Clone() );
 			}
+
+			MeshBakerDebugger.lastBake = debug;
 
 			return lodMeshes;
 		}

@@ -24,8 +24,6 @@ namespace TAO.VertexAnimation
 
 			foreach (AnimationBook book in animationBooks)
 			{
-				book.UpdateMaterials();
-
 				if (book != null)
 				{
 					foreach (Animation animation in book.animations)

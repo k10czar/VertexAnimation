@@ -17,9 +17,7 @@ namespace TAO.VertexAnimation.Editor
         {
             serializedObject.Update();
 
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("positionMap"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("animations"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("materials"));
 
 			EditorGUILayoutUtils.HorizontalLine(color: Color.gray);
 
