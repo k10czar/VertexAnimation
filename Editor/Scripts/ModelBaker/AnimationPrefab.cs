@@ -93,8 +93,8 @@ namespace TAO.VertexAnimation.Editor
 			lodGroup.RecalculateBounds();
 
 			// Create prefab.
-			GameObject prefab = PrefabUtility.SaveAsPrefabAssetAndConnect(parent, path, InteractionMode.AutomatedAction);
-			//GameObject.DestroyImmediate(parent);
+			GameObject prefab = PrefabUtility.SaveAsPrefabAsset(parent, path, out _);
+			Object.DestroyImmediate(parent);
 
 			return prefab;
 		}

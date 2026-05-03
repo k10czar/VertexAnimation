@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Mathematics;
-using UnityEngine;
 using Hash128 = Unity.Entities.Hash128;
 using Random = Unity.Mathematics.Random;
 

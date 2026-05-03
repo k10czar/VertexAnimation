@@ -101,27 +101,29 @@ namespace TAO.VertexAnimation.Editor
 		{
 			Debug.Log($"{name}.VertexAnimationModelBaker.Bake()");
 
+			AnimationBook sharedBook = null;
+
 			if (_batchMode)
 			{
 				var smrs = model.GetComponentsInChildren<SkinnedMeshRenderer>(includeInactive);
 				foreach (var smr in smrs)
 				{
 					if (_ignoredMeshs != null && _ignoredMeshs.Contains(smr.name)) continue;
-					BakeSingle($"{name}_MultipleBakes", smr.name);
+					BakeSingle($"{name}_MultipleBakes", smr.name, ref sharedBook);
 				}
 			}
 			else
 			{
-				BakeSingle($"{name}_SingleBake", null);
+				BakeSingle($"{name}_SingleBake", name, ref sharedBook);
 			}
 
-			// TODO: if (generateAnimationBook) GenerateBook(...) here generating only one shared AnimationBook and remove duplication and rewrite from SaveAssets methods
-			// TODO: Pass on all BakedModel setting the single generated AnimationBook and a BakedModel.material pass setting _MaxFrames and _PositionMap
+			EditorUtility.SetDirty(this);
+			AssetDatabase.SaveAssets();
+			AssetDatabase.Refresh();
 		}
 
-		private void BakeSingle(string path, string onlyMeshName)
+		private void BakeSingle(string path, string onlyMeshName, ref AnimationBook sharedBook)
 		{
-			
 			Material sourceMaterial = null;
 			if (onlyMeshName != null)
 			{
@@ -141,7 +143,7 @@ namespace TAO.VertexAnimation.Editor
 			AnimationBaker.BakedData bakedData = target.Bake(animationClips.Clips, applyRootMotion, fps, textureWidth);
 			DestroyImmediate(target);
 
-			SaveAssets(bakedData, path, onlyMeshName, sourceMaterial);
+			SaveAssets(bakedData, path, onlyMeshName, sourceMaterial, ref sharedBook);
 		}
 
 		private void RemoveIgnoredMeshes(GameObject target)
@@ -163,7 +165,7 @@ namespace TAO.VertexAnimation.Editor
 
 		// ── Save ─────────────────────────────────────────────────
 
-		private void SaveAssets(AnimationBaker.BakedData bakedData, string relativePath, string name, Material sourceMaterial = null)
+		private void SaveAssets(AnimationBaker.BakedData bakedData, string relativePath, string name, Material sourceMaterial, ref AnimationBook sharedBook)
 		{
 			EnsureOutputFolder();
 			string folder = GetOutputFolder();
@@ -213,8 +215,21 @@ namespace TAO.VertexAnimation.Editor
 
 			if (generatePrefab) GeneratePrefab(bakedData, bakedModel, rootFolder, name, sourceMaterial);
 
-			//TODO: This line of GenerateBook should go to Bake(), doing only once for the Batch mode, not rewrite for each SaveAsset 
-			if (generateAnimationBook) GenerateBook(bakedData, bakedModel, rootFolder + ".asset" );
+			if (generateAnimationBook)
+			{
+				if (sharedBook == null)
+					sharedBook = GenerateBook(bakedData, bakedModel, rootFolder + ".asset");
+				else
+				{
+					bakedModel.book = sharedBook;
+					if (bakedModel.material != null && bakedData.positionMaps.Count > 0)
+					{
+						var mapInfo = bakedData.positionMaps[0].name.GetTextureInfo();
+						if (bakedModel.material.HasProperty("_MaxFrames")) bakedModel.material.SetFloat("_MaxFrames", mapInfo.maxFrames);
+						if (bakedModel.material.HasProperty("_PositionMap")) bakedModel.material.SetTexture("_PositionMap", bakedModel.positionMap);
+					}
+				}
+			}
 
 			if (!bakedModels.Contains(bakedModel)) bakedModels.Add(bakedModel);
 
@@ -255,8 +270,9 @@ namespace TAO.VertexAnimation.Editor
 
 			if (sourceMaterial != null)
 			{
-				bakedModel.material.SetTexture( "_BaseMap", sourceMaterial.GetTexture( "_BaseMap" ) );
-				bakedModel.material.SetColor( "_BaseColor", sourceMaterial.GetColor( "_BaseColor" ) );
+				var texture = _materialBaseMapOverride != null ? _materialBaseMapOverride : sourceMaterial.GetTexture( "_BaseMap" );
+				bakedModel.material.SetTexture( "_BaseMap", texture );
+				bakedModel.material.SetColor( "_BaseColor", _colorOverride );
 				bakedModel.material.SetTexture( "_SpecGlossMap", sourceMaterial.GetTexture( "_SpecGlossMap" ) );
 				bakedModel.material.SetColor( "_SpecColor", sourceMaterial.GetColor( "_SpecColor" ) );
 				if (sourceMaterial.IsKeywordEnabled( "_EMISSION" ))
@@ -270,7 +286,7 @@ namespace TAO.VertexAnimation.Editor
 			bakedModel.prefab = AnimationPrefab.Create(path, outputName, bakedModel.meshes, bakedModel.material, lodSettings.GetTransitionSettings());
 		}
 
-		private void GenerateBook(AnimationBaker.BakedData bakedData, BakedModel bakedModel, string outputPath)
+		private AnimationBook GenerateBook(AnimationBaker.BakedData bakedData, BakedModel bakedModel, string outputPath)
 		{
 			string bookPath = outputPath.Replace(".asset", "_AnimBook.asset");
 			string bookDir = Path.GetDirectoryName(bookPath).Replace('\\', '/');
@@ -316,16 +332,7 @@ namespace TAO.VertexAnimation.Editor
 			}
 
 			EditorUtility.SetDirty(book);
-		}
-
-		private static bool TryGetAnimationFromBook(AnimationBook book, string animationName, out Animation animation)
-		{
-			foreach (var a in book.animations)
-			{
-				if (a != null && a.name == animationName) { animation = a; return true; }
-			}
-			animation = null;
-			return false;
+			return book;
 		}
 
 		// ── Cleanup ───────────────────────────────────────────────
