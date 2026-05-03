@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 
@@ -7,7 +8,7 @@ namespace TAO.VertexAnimation.Editor
 	public class VertexAnimationModelBakerEditor : UnityEditor.Editor
 	{
 		private VertexAnimationModelBaker modelBaker = null;
-		private bool _ignoredMeshsFoldout = false;
+		private bool _meshsFoldout = false;
 		private Vector2 _ignoredMeshsScroll = Vector2.zero;
 		private const float MESHES_MAX_HEIGHT = 240f;
 
@@ -24,6 +25,8 @@ namespace TAO.VertexAnimation.Editor
 		SerializedProperty _generateAnimationBookProp;
 		SerializedProperty _generatePrefabProp;
 		SerializedProperty _materialShaderProp;
+		SerializedProperty _materialBaseMapOverrideProp;
+		SerializedProperty _colorOverrideProp;
 		SerializedProperty _useNormalAProp;
 		SerializedProperty _useInterpolationProp;
 
@@ -44,8 +47,14 @@ namespace TAO.VertexAnimation.Editor
 			_generateAnimationBookProp = serializedObject.FindProperty("generateAnimationBook");
 			_generatePrefabProp = serializedObject.FindProperty("generatePrefab");
 			_materialShaderProp = serializedObject.FindProperty("materialShader");
+			_materialBaseMapOverrideProp = serializedObject.FindProperty("_materialBaseMapOverride");
+			_colorOverrideProp = serializedObject.FindProperty("_colorOverride");
 			_useNormalAProp = serializedObject.FindProperty("useNormalA");
 			_useInterpolationProp = serializedObject.FindProperty("useInterpolation");
+			
+			_ignoredSet.Clear();
+			for (int i = 0; i < _ignoredMeshsProp.arraySize; i++)
+				_ignoredSet.Add(_ignoredMeshsProp.GetArrayElementAtIndex(i).stringValue);
 		}
 
 		public override void OnInspectorGUI()
@@ -81,6 +90,9 @@ namespace TAO.VertexAnimation.Editor
 				_batchModeProp.boolValue = !_batchModeProp.boolValue;
 		}
 
+		HashSet<string> _ignoredSet = new();
+		HashSet<string> _ignoredSetFlipper = new();
+
 		private void IgnoredMeshesGUI()
 		{
 			if (modelBaker.model == null) return;
@@ -89,8 +101,8 @@ namespace TAO.VertexAnimation.Editor
 			if (smrs.Length == 0) return;
 
 			int selected = smrs.Length - _ignoredMeshsProp.arraySize;
-			_ignoredMeshsFoldout = EditorGUILayout.BeginFoldoutHeaderGroup(_ignoredMeshsFoldout, $"Meshes {selected}/{smrs.Length}");
-			if (_ignoredMeshsFoldout)
+			_meshsFoldout = EditorGUILayout.BeginFoldoutHeaderGroup(_meshsFoldout, $"Meshes {selected}/{smrs.Length}");
+			if (_meshsFoldout)
 			{
 				using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
 				{
@@ -99,6 +111,7 @@ namespace TAO.VertexAnimation.Editor
 						if (GUILayout.Button("All", EditorStyles.miniButtonLeft))
 						{
 							_ignoredMeshsProp.ClearArray();
+							_ignoredSet.Clear();
 						}
 						if (GUILayout.Button("None", EditorStyles.miniButtonMid))
 						{
@@ -106,16 +119,32 @@ namespace TAO.VertexAnimation.Editor
 							for (int i = 0; i < smrs.Length; i++)
 							{
 								_ignoredMeshsProp.InsertArrayElementAtIndex(i);
-								_ignoredMeshsProp.GetArrayElementAtIndex(i).stringValue = smrs[i].name;
+								var smr = smrs[i];
+								_ignoredMeshsProp.GetArrayElementAtIndex(i).stringValue = smr.name;
+								_ignoredSet.Add( smr.name );
 							}
 						}
 						if (GUILayout.Button("Flip", EditorStyles.miniButtonRight))
 						{
+							_ignoredSetFlipper.Clear();
 							foreach (var smr in smrs)
 							{
-								if (ListContains(_ignoredMeshsProp, smr.name)) RemoveFromList(_ignoredMeshsProp, smr.name);
-								else { int idx = _ignoredMeshsProp.arraySize; _ignoredMeshsProp.InsertArrayElementAtIndex(idx); _ignoredMeshsProp.GetArrayElementAtIndex(idx).stringValue = smr.name; }
+								if (_ignoredSet.Contains(smr.name)) 
+								{
+									RemoveFromList(_ignoredMeshsProp, smr.name);
+								}
+								else 
+								{ 
+									int idx = _ignoredMeshsProp.arraySize; 
+									_ignoredMeshsProp.InsertArrayElementAtIndex(idx); 
+									_ignoredMeshsProp.GetArrayElementAtIndex(idx).stringValue = smr.name; 
+									_ignoredSetFlipper.Add( smr.name );
+								}
 							}
+							_ignoredSet.Clear();
+							var oldRef = _ignoredSet;
+							_ignoredSet = _ignoredSetFlipper;
+							_ignoredSetFlipper = oldRef;
 						}
 					}
 
@@ -123,7 +152,7 @@ namespace TAO.VertexAnimation.Editor
 					EditorGUI.indentLevel++;
 					foreach (var smr in smrs)
 					{
-						bool isIgnored = ListContains(_ignoredMeshsProp, smr.name);
+						bool isIgnored = _ignoredSet.Contains(smr.name);
 						bool include = EditorGUILayout.ToggleLeft(smr.name, !isIgnored);
 
 						if (!include && !isIgnored)
@@ -131,10 +160,12 @@ namespace TAO.VertexAnimation.Editor
 							int idx = _ignoredMeshsProp.arraySize;
 							_ignoredMeshsProp.InsertArrayElementAtIndex(idx);
 							_ignoredMeshsProp.GetArrayElementAtIndex(idx).stringValue = smr.name;
+							_ignoredSet.Add( smr.name );
 						}
 						else if (include && isIgnored)
 						{
 							RemoveFromList(_ignoredMeshsProp, smr.name);
+							_ignoredSet.Remove( smr.name );
 						}
 					}
 					EditorGUI.indentLevel--;
@@ -144,16 +175,7 @@ namespace TAO.VertexAnimation.Editor
 			EditorGUILayout.EndFoldoutHeaderGroup();
 		}
 
-		private static bool ListContains(SerializedProperty arrayProp, string value)
-		{
-			for (int i = 0; i < arrayProp.arraySize; i++)
-			{
-				if (arrayProp.GetArrayElementAtIndex(i).stringValue == value) return true;
-			}
-			return false;
-		}
-
-		private static void RemoveFromList(SerializedProperty arrayProp, string value)
+private static void RemoveFromList(SerializedProperty arrayProp, string value)
 		{
 			for (int i = arrayProp.arraySize - 1; i >= 0; i--)
 			{
@@ -179,30 +201,21 @@ namespace TAO.VertexAnimation.Editor
 
 			EditorGUILayout.PropertyField(_useNormalAProp, new GUIContent("Use Normal (A)"));
 			EditorGUILayout.PropertyField(_useInterpolationProp);
+			EditorGUILayout.PropertyField(_materialBaseMapOverrideProp, new GUIContent("Base Map Override"));
+			EditorGUILayout.PropertyField(_colorOverrideProp, new GUIContent("Color Override"));
 
 			if (GUILayout.Button("Bake", GUILayout.Height(32)))
 			{
 				modelBaker.Bake();
 			}
 
-			using (new EditorGUILayout.HorizontalScope())
-			{
-				if (GUILayout.Button("Delete Unused Animations", EditorStyles.miniButtonLeft))
-				{
-					if (EditorUtility.DisplayDialog("Delete Unused Animations", "Deleting assets will loose references within the project.", "Ok", "Cancel"))
-					{
-						modelBaker.DeleteUnusedAnimations();
-					}
-				}
-
-				if (GUILayout.Button("Delete", EditorStyles.miniButtonRight))
-				{
-					if (EditorUtility.DisplayDialog("Delete Assets", "Deleting assets will loose references within the project.", "Ok", "Cancel"))
-					{
-						modelBaker.DeleteSavedAssets();
-					}
-				}
-			}
+			// using (new EditorGUILayout.HorizontalScope())
+			// {
+			// 	if (GUILayout.Button("Clear Cache", EditorStyles.miniButtonLeft))
+			// 	{
+			// 		// modelBaker.DeleteUnusedAnimations();
+			// 	}
+			// }
 		}
 	}
 }

@@ -12,7 +12,7 @@ namespace TAO.VertexAnimation.Editor
 		public GameObject model;
 
 		/// <summary> If true each child mesh will be processed separated to its own output file with name of the mesh transform name. </summary>
-		[SerializeField] bool _batchMode;
+		[SerializeField] bool _batchMode = true;
 		/// <summary> Child meshes inside this collection will not be processed. </summary>
 		[SerializeField] List<string> _ignoredMeshs;
 
@@ -28,6 +28,8 @@ namespace TAO.VertexAnimation.Editor
 		public bool generateAnimationBook = true;
 		public bool generatePrefab = true;
 		public Shader materialShader = null;
+		public Texture2D _materialBaseMapOverride = null;
+		public Color _colorOverride = Color.white;
 		public bool useInterpolation = true;
 		public bool useNormalA = true;
 
@@ -105,16 +107,19 @@ namespace TAO.VertexAnimation.Editor
 				foreach (var smr in smrs)
 				{
 					if (_ignoredMeshs != null && _ignoredMeshs.Contains(smr.name)) continue;
-					BakeSingle($"{name}_MultipleBakes/{smr.name}", smr.name);
+					BakeSingle($"{name}_MultipleBakes", smr.name);
 				}
 			}
 			else
 			{
 				BakeSingle($"{name}_SingleBake", null);
 			}
+
+			// TODO: if (generateAnimationBook) GenerateBook(...) here generating only one shared AnimationBook and remove duplication and rewrite from SaveAssets methods
+			// TODO: Pass on all BakedModel setting the single generated AnimationBook and a BakedModel.material pass setting _MaxFrames and _PositionMap
 		}
 
-		private void BakeSingle(string outputName, string onlyMeshName)
+		private void BakeSingle(string path, string onlyMeshName)
 		{
 			
 			Material sourceMaterial = null;
@@ -136,7 +141,7 @@ namespace TAO.VertexAnimation.Editor
 			AnimationBaker.BakedData bakedData = target.Bake(animationClips.Clips, applyRootMotion, fps, textureWidth);
 			DestroyImmediate(target);
 
-			SaveAssets(bakedData, outputName, sourceMaterial);
+			SaveAssets(bakedData, path, onlyMeshName, sourceMaterial);
 		}
 
 		private void RemoveIgnoredMeshes(GameObject target)
@@ -158,11 +163,12 @@ namespace TAO.VertexAnimation.Editor
 
 		// ── Save ─────────────────────────────────────────────────
 
-		private void SaveAssets(AnimationBaker.BakedData bakedData, string outputName, Material sourceMaterial = null)
+		private void SaveAssets(AnimationBaker.BakedData bakedData, string relativePath, string name, Material sourceMaterial = null)
 		{
 			EnsureOutputFolder();
 			string folder = GetOutputFolder();
-			string modelPath = $"{folder}/{outputName}.asset";
+			string rootFolder = $"{folder}/{relativePath}";
+			string modelPath = $"{rootFolder}/{name}.asset";
 			string modelDir = Path.GetDirectoryName(modelPath).Replace('\\', '/');
 			if (!AssetDatabase.IsValidFolder(modelDir))
 			{
@@ -184,13 +190,11 @@ namespace TAO.VertexAnimation.Editor
 				if (a != bakedModel) AssetDatabase.RemoveObjectFromAsset(a);
 			}
 
-			var rawName = outputName.Split('/')[^1];
-
 			// Position map.
 			bakedModel.positionMap = Texture2DArrayUtils.CreateTextureArray(
 				bakedData.positionMaps.ToArray(), false, true,
 				TextureWrapMode.Repeat, FilterMode.Point, 1,
-				$"{rawName}_PositionMap", true);
+				$"{name}_PositionMap", true);
 			AssetDatabase.AddObjectToAsset(bakedModel.positionMap, bakedModel);
 
 			// Meshes.
@@ -207,8 +211,10 @@ namespace TAO.VertexAnimation.Editor
 
 			AssetDatabase.SaveAssets();
 
-			if (generatePrefab) GeneratePrefab(bakedData, bakedModel, outputName, folder, sourceMaterial);
-			if (generateAnimationBook) GenerateBook(bakedData, bakedModel, outputName);
+			if (generatePrefab) GeneratePrefab(bakedData, bakedModel, rootFolder, name, sourceMaterial);
+
+			//TODO: This line of GenerateBook should go to Bake(), doing only once for the Batch mode, not rewrite for each SaveAsset 
+			if (generateAnimationBook) GenerateBook(bakedData, bakedModel, rootFolder + ".asset" );
 
 			if (!bakedModels.Contains(bakedModel)) bakedModels.Add(bakedModel);
 
@@ -218,20 +224,33 @@ namespace TAO.VertexAnimation.Editor
 			AssetDatabase.Refresh();
 		}
 
-		private void GeneratePrefab(AnimationBaker.BakedData bakedData, BakedModel bakedModel, string outputName, string folder, Material sourceMaterial)
+		private void GeneratePrefab(AnimationBaker.BakedData bakedData, BakedModel bakedModel, string folder, string outputName, Material sourceMaterial)
 		{
-			string path = $"{folder}/{outputName}.prefab";
+			string path = $"{folder}/Prefabs/{outputName}.prefab";
+			string prefabDir = Path.GetDirectoryName(path).Replace('\\', '/');
+			if (!AssetDatabase.IsValidFolder(prefabDir))
+			{
+				string parent = Path.GetDirectoryName(prefabDir).Replace('\\', '/');
+				if (!AssetDatabase.IsValidFolder(parent))
+					AssetDatabase.CreateFolder(Path.GetDirectoryName(parent).Replace('\\', '/'), Path.GetFileName(parent));
+				AssetDatabase.CreateFolder(parent, Path.GetFileName(prefabDir));
+			}
 			NamingConventionUtils.PositionMapInfo info = bakedData.GetPositionMap.name.GetTextureInfo();
 
 			var matName = outputName.Split('/')[^1] + "_Material";
 			if (bakedModel.material == null)
 			{
-				bakedModel.material = AnimationMaterial.Create(matName, materialShader, bakedModel.positionMap, useNormalA, useInterpolation, info.maxFrames);
+				var newMat = AnimationMaterial.Create(matName, materialShader, bakedModel.positionMap, useNormalA, useInterpolation, info.maxFrames);
+				bakedModel.material = newMat;
+				if( _materialBaseMapOverride != null ) bakedModel.material.SetTexture( "_BaseMap", _materialBaseMapOverride );
+				bakedModel.material.SetColor( "_BaseColor", _colorOverride );
 				AssetDatabase.AddObjectToAsset(bakedModel.material, bakedModel);
 			}
 			else
 			{
 				bakedModel.material.Update(matName, materialShader, bakedModel.positionMap, useNormalA, useInterpolation, info.maxFrames);
+				if( _materialBaseMapOverride != null ) bakedModel.material.SetTexture( "_BaseMap", _materialBaseMapOverride );
+				bakedModel.material.SetColor( "_BaseColor", _colorOverride );
 			}
 
 			if (sourceMaterial != null)
@@ -251,9 +270,9 @@ namespace TAO.VertexAnimation.Editor
 			bakedModel.prefab = AnimationPrefab.Create(path, outputName, bakedModel.meshes, bakedModel.material, lodSettings.GetTransitionSettings());
 		}
 
-		private void GenerateBook(AnimationBaker.BakedData bakedData, BakedModel bakedModel, string outputName)
+		private void GenerateBook(AnimationBaker.BakedData bakedData, BakedModel bakedModel, string outputPath)
 		{
-			string bookPath = AssetDatabase.GetAssetPath(this).Replace(".asset", "_Book.asset");
+			string bookPath = outputPath.Replace(".asset", "_AnimBook.asset");
 			string bookDir = Path.GetDirectoryName(bookPath).Replace('\\', '/');
 			if (!AssetDatabase.IsValidFolder(bookDir))
 			{
@@ -286,7 +305,7 @@ namespace TAO.VertexAnimation.Editor
 
 			for (int i = 0; i < info.Count; i++)
 			{
-				string animationName = $"{outputName}_{info[i].name}";
+				string animationName = info[i].name;
 				VA_AnimationData newData = new(animationName, info[i].frames, info[i].maxFrames, info[i].fps, i, -1);
 
 				var animation = CreateInstance<Animation>();
