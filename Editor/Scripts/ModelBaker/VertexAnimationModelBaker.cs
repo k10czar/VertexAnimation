@@ -253,20 +253,17 @@ namespace TAO.VertexAnimation.Editor
 			NamingConventionUtils.PositionMapInfo info = bakedData.GetPositionMap.name.GetTextureInfo();
 
 			var matName = outputName.Split('/')[^1] + "_Material";
-			if (bakedModel.material == null)
+
+			if (bakedModel.material != null)
 			{
-				var newMat = AnimationMaterial.Create(matName, materialShader, bakedModel.positionMap, useNormalA, useInterpolation, info.maxFrames);
-				bakedModel.material = newMat;
-				if( _materialBaseMapOverride != null ) bakedModel.material.SetTexture( "_BaseMap", _materialBaseMapOverride );
-				bakedModel.material.SetColor( "_BaseColor", _colorOverride );
-				AssetDatabase.AddObjectToAsset(bakedModel.material, bakedModel);
+				AssetDatabase.RemoveObjectFromAsset(bakedModel.material);
+				bakedModel.material = null;
 			}
-			else
-			{
-				bakedModel.material.Update(matName, materialShader, bakedModel.positionMap, useNormalA, useInterpolation, info.maxFrames);
-				if( _materialBaseMapOverride != null ) bakedModel.material.SetTexture( "_BaseMap", _materialBaseMapOverride );
-				bakedModel.material.SetColor( "_BaseColor", _colorOverride );
-			}
+
+			bakedModel.material = AnimationMaterial.Create(matName, materialShader, bakedModel.positionMap, useNormalA, useInterpolation, info.maxFrames);
+			if( _materialBaseMapOverride != null ) bakedModel.material.SetTexture( "_BaseMap", _materialBaseMapOverride );
+			bakedModel.material.SetColor( "_BaseColor", _colorOverride );
+			AssetDatabase.AddObjectToAsset(bakedModel.material, bakedModel);
 
 			if (sourceMaterial != null)
 			{
